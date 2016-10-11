@@ -25,6 +25,8 @@ namespace UwpApp
         public MainPage()
         {
             this.InitializeComponent();
+
+            _webView.Navigate(new Uri("http://dev.pjblewis.com/SmartThingsApp/webui/?hello=world"));
         }
     }
 }
