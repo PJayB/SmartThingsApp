@@ -46,6 +46,23 @@ namespace UwpApp
             _http = new HttpClient();
         }
 
+        private void HttpRequestCompleted(IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> op, AsyncStatus status)
+        {
+            
+        }
+
+        private async void HttpRequestProgress(IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> op, HttpProgress progress)
+        {
+            await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () => 
+            {
+                string totalBytes = progress.TotalBytesToReceive.HasValue ? "/" + progress.TotalBytesToReceive.Value.ToString() : string.Empty;
+                Log($"Recieved {progress.BytesReceived}{totalBytes} bytes...");
+            });
+        }
+
+
+
+
         private async void Page_Loaded(object sender, RoutedEventArgs e)
         {
             _webView.Navigate(new Uri(c_EndPoint));
@@ -54,7 +71,11 @@ namespace UwpApp
 
             try
             {
-                HttpResponseMessage response = await _http.GetAsync(new Uri(c_EndPoint)).AsTask(_cancelationTokens.Token);
+                IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.GetAsync(new Uri(c_EndPoint));
+                //httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
+                httpOperation.Progress = new AsyncOperationProgressHandler<HttpResponseMessage, HttpProgress>(HttpRequestProgress);
+
+                HttpResponseMessage response = await httpOperation.AsTask(_cancelationTokens.Token);
 
                 Log("HEADERS:");
                 foreach (var i in response.Headers)
