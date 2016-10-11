@@ -46,9 +46,33 @@ namespace UwpApp
             _http = new HttpClient();
         }
 
-        private void HttpRequestCompleted(IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> op, AsyncStatus status)
+        private async void HttpRequestCompleted(IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> op, AsyncStatus status)
         {
-            
+            await Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
+            {
+                if (status == AsyncStatus.Canceled)
+                {
+                    Log("Canceled.");
+                }
+                else if (status == AsyncStatus.Error)
+                {
+                    Log("Error: " + op.ErrorCode.Message);
+                }
+                else if (status == AsyncStatus.Completed)
+                {
+                    var response = op.GetResults();
+
+                    Log("HEADERS:");
+                    foreach (var i in response.Headers)
+                    {
+                        Log($"{i.Key}: {i.Value}");
+                    }
+                    Log("CONTENT:");
+                    Log($"{response.Content}");
+
+                    _progressBar.IsIndeterminate = false;
+                }
+            });
         }
 
         private async void HttpRequestProgress(IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> op, HttpProgress progress)
@@ -63,27 +87,20 @@ namespace UwpApp
 
 
 
-        private async void Page_Loaded(object sender, RoutedEventArgs e)
+        private void Page_Loaded(object sender, RoutedEventArgs e)
         {
             _webView.Navigate(new Uri(c_EndPoint));
 
             Log("Contacting " + c_EndPoint + "...");
 
+            _progressBar.IsIndeterminate = true;
+
             try
             {
                 IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.GetAsync(new Uri(c_EndPoint));
-                //httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
+                httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
                 httpOperation.Progress = new AsyncOperationProgressHandler<HttpResponseMessage, HttpProgress>(HttpRequestProgress);
-
-                HttpResponseMessage response = await httpOperation.AsTask(_cancelationTokens.Token);
-
-                Log("HEADERS:");
-                foreach (var i in response.Headers)
-                {
-                    Log($"{i.Key}: {i.Value}");
-                }
-                Log("CONTENT:");
-                Log($"{response.Content}");
+                httpOperation.AsTask().Start();
             }
             catch (TaskCanceledException)
             {
