@@ -30,8 +30,6 @@ namespace UwpApp
         CancellationTokenSource _cancelationTokens;
 
         const string c_DisplayEndPoint = "http://dev.pjblewis.com/SmartThingsApp/webui/?hello=world";
-        const string c_EndPoint = "";
-        const string c_Token = "";
 
         public void Log(string s)
         {
@@ -86,25 +84,55 @@ namespace UwpApp
         }
 
 
+        class SmartThingsEndPoint
+        {
+            public Uri Uri;
+            public string AuthToken;
+        }
 
+        async Task<SmartThingsEndPoint> ReadEndPointFromFileAsync()
+        {
+            try
+            {
+                SmartThingsEndPoint ep = new SmartThingsEndPoint();
 
-        private void Page_Loaded(object sender, RoutedEventArgs e)
+                Windows.Storage.StorageFolder folder = Windows.Storage.ApplicationData.Current.LocalFolder;
+                Windows.Storage.StorageFile file = await folder.GetFileAsync("endpoint.txt");
+
+                var strings = await Windows.Storage.FileIO.ReadLinesAsync(file);
+
+                ep.Uri = new Uri(strings[0]);
+                ep.AuthToken = strings[1];
+
+                return ep;
+            } 
+            catch (Exception ex)
+            {
+                Log("Couldn't read endpoint data from file: " + ex.Message);
+                Log("Path: " + Windows.Storage.ApplicationData.Current.LocalFolder.Path);
+                return null;
+            }
+        }
+
+        private async void Page_Loaded(object sender, RoutedEventArgs e)
         {
             _webView.Navigate(new Uri(c_DisplayEndPoint));
-
-            Log("Contacting " + c_EndPoint + "...");
 
             _progressBar.IsIndeterminate = true;
 
             try
             {
+                SmartThingsEndPoint endPoint = await ReadEndPointFromFileAsync();
+
+                Log("Contacting " + endPoint.Uri.AbsoluteUri + "...");
+
                 var message = new HttpRequestMessage()
                 {
-                    RequestUri = new Uri(c_EndPoint),
+                    RequestUri = endPoint.Uri,
                     Method = HttpMethod.Get
                 };
 
-                message.Headers.Authorization = new Windows.Web.Http.Headers.HttpCredentialsHeaderValue("Bearer", c_Token);
+                message.Headers.Authorization = new Windows.Web.Http.Headers.HttpCredentialsHeaderValue("Bearer", endPoint.AuthToken);
 
                 IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.SendRequestAsync(message);
                 httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
