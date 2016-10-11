@@ -56,6 +56,12 @@ namespace UwpApp
             {
                 HttpResponseMessage response = await _http.GetAsync(new Uri(c_EndPoint)).AsTask(_cancelationTokens.Token);
 
+                Log("HEADERS:");
+                foreach (var i in response.Headers)
+                {
+                    Log($"{i.Key}: {i.Value}");
+                }
+                Log("CONTENT:");
                 Log($"{response.Content}");
             }
             catch (TaskCanceledException)
