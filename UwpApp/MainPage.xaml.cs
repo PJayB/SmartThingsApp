@@ -29,8 +29,9 @@ namespace UwpApp
         HttpClient _http;
         CancellationTokenSource _cancelationTokens;
 
-
-        const string c_EndPoint = "http://dev.pjblewis.com/SmartThingsApp/webui/?hello=world";
+        const string c_DisplayEndPoint = "http://dev.pjblewis.com/SmartThingsApp/webui/?hello=world";
+        const string c_EndPoint = "";
+        const string c_Token = "";
 
         public void Log(string s)
         {
@@ -89,7 +90,7 @@ namespace UwpApp
 
         private void Page_Loaded(object sender, RoutedEventArgs e)
         {
-            _webView.Navigate(new Uri(c_EndPoint));
+            _webView.Navigate(new Uri(c_DisplayEndPoint));
 
             Log("Contacting " + c_EndPoint + "...");
 
@@ -97,7 +98,15 @@ namespace UwpApp
 
             try
             {
-                IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.GetAsync(new Uri(c_EndPoint));
+                var message = new HttpRequestMessage()
+                {
+                    RequestUri = new Uri(c_EndPoint),
+                    Method = HttpMethod.Get
+                };
+
+                message.Headers.Authorization = new Windows.Web.Http.Headers.HttpCredentialsHeaderValue("Bearer", c_Token);
+
+                IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.SendRequestAsync(message);
                 httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
                 httpOperation.Progress = new AsyncOperationProgressHandler<HttpResponseMessage, HttpProgress>(HttpRequestProgress);
                 httpOperation.AsTask().Start();
