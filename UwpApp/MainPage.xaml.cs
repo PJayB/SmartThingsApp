@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -28,6 +29,7 @@ namespace UwpApp
         CancellationTokenSource _cancelationTokens;
 
         const string c_DisplayEndPoint = "http://dev.pjblewis.com/SmartThingsApp/webui/?hello=world";
+        const string c_TestDeviceID = "";
 
         private void ExecuteOnUiThread(Action a)
         {
@@ -41,6 +43,7 @@ namespace UwpApp
 
         public void Log(string s)
         {
+            Debug.WriteLine(s);
             ExecuteOnUiThread(() => 
             { 
                 _debugOutput.Text += s + Environment.NewLine;
@@ -137,7 +140,7 @@ namespace UwpApp
             }
         }
 
-        HttpRequestMessage ConstructMessage(SmartThingsEndPoint endPoint, string command = null, HttpMethod method = null)
+        HttpRequestMessage ConstructMessage(SmartThingsEndPoint endPoint, string command, HttpMethod method = null)
         {
             Uri uri = new Uri(endPoint.Uri + command ?? "");
 
@@ -152,9 +155,9 @@ namespace UwpApp
             return message;
         }
 
-        async Task<HttpResponseMessage> GetAllSwitches(SmartThingsEndPoint endPoint)
+        async Task<HttpResponseMessage> GetAllThings(SmartThingsEndPoint endPoint, string thingType)
         {
-            var message = ConstructMessage(endPoint);
+            var message = ConstructMessage(endPoint, thingType);
 
             Log("Contacting " + message.RequestUri + "...");
 
@@ -164,9 +167,9 @@ namespace UwpApp
             return await httpOperation;
         }
 
-        async Task<HttpResponseMessage> TurnOnAllSwitches(SmartThingsEndPoint endPoint)
+        async Task<HttpResponseMessage> ExecuteOnThing(SmartThingsEndPoint endPoint, string switchID, string command)
         {
-            var message = ConstructMessage(endPoint, "on", HttpMethod.Put);
+            var message = ConstructMessage(endPoint, $"actuate/{switchID}/{command}", HttpMethod.Put);
 
             Log("Contacting " + message.RequestUri + "...");
 
@@ -189,16 +192,15 @@ namespace UwpApp
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
                 var task = new Task(async () => 
                 {
-                    var getResult = await GetAllSwitches(endPoint);
-                    LogHttpResponse(getResult);
-                    var setResult = await TurnOnAllSwitches(endPoint);
-                    LogHttpResponse(setResult);
+                    LogHttpResponse(await GetAllThings(endPoint, "sensors"));
+                    LogHttpResponse(await GetAllThings(endPoint, "actuators"));
+                    LogHttpResponse(await ExecuteOnThing(endPoint, c_TestDeviceID, "on"));
 
                     // A set and get back-to-back seems to return stale data, so wait a bit :/
                     await Task.Delay(500);
 
-                    var getResult2 = await GetAllSwitches(endPoint);
-                    LogHttpResponse(getResult2);
+                    LogHttpResponse(await GetAllThings(endPoint, "actuators"));
+                    LogHttpResponse(await ExecuteOnThing(endPoint, c_TestDeviceID, "off"));
 
                     ExecuteOnUiThread(() =>
                     {
