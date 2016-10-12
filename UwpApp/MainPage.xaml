@@ -14,7 +14,7 @@
                 <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
             <WebView Grid.Column="0" x:Name="_webView"/>
-            <TextBlock Grid.Column="1" x:Name="_debugOutput" FontFamily="Consolas" FontSize="14"/>
+            <TextBox Grid.Column="1" x:Name="_debugOutput" FontFamily="Consolas" FontSize="14" TextWrapping="Wrap" IsReadOnly="True"/>
         </Grid>
         <ProgressBar Grid.ColumnSpan="2" x:Name="_progressBar" IsIndeterminate="True" VerticalAlignment="Top" Background="#00000000" Foreground="{ThemeResource SystemControlForegroundAccentBrush}" />
     </Grid>

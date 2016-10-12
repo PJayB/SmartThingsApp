@@ -29,18 +29,49 @@ namespace UwpApp
 
         const string c_DisplayEndPoint = "http://dev.pjblewis.com/SmartThingsApp/webui/?hello=world";
 
-        public void Log(string s)
+        private void ExecuteOnUiThread(Action a)
         {
-            _debugOutput.Text += s + Environment.NewLine;
+#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
+            {
+                a();
+            });
+#pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
         }
 
+        public void Log(string s)
+        {
+            ExecuteOnUiThread(() => 
+            { 
+                _debugOutput.Text += s + Environment.NewLine;
+            });
+        }
 
         public MainPage()
         {
             this.InitializeComponent();
 
             _cancelationTokens = new CancellationTokenSource();
-            _http = new HttpClient();
+
+            //
+            // Disable caching! 
+            //
+
+            var httpFilter = new Windows.Web.Http.Filters.HttpBaseProtocolFilter();
+            httpFilter.CacheControl.ReadBehavior = Windows.Web.Http.Filters.HttpCacheReadBehavior.NoCache;
+            _http = new HttpClient(httpFilter);
+        }
+
+        private void LogHttpResponse(HttpResponseMessage response)
+        {
+            Log("Response: " + response.StatusCode);
+            Log("HEADERS:");
+            foreach (var i in response.Headers)
+            {
+                Log($"{i.Key}: {i.Value}");
+            }
+            Log("CONTENT:");
+            Log($"{response.Content}");
         }
 
         private async void HttpRequestCompleted(IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> op, AsyncStatus status)
@@ -51,24 +82,15 @@ namespace UwpApp
                 {
                     Log("Canceled.");
                 }
-                else if (status == AsyncStatus.Error)
+                else
                 {
-                    Log("Error: " + op.ErrorCode.Message);
+                    LogHttpResponse(op.GetResults());
                 }
-                else if (status == AsyncStatus.Completed)
-                {
-                    var response = op.GetResults();
+            });
 
-                    Log("HEADERS:");
-                    foreach (var i in response.Headers)
-                    {
-                        Log($"{i.Key}: {i.Value}");
-                    }
-                    Log("CONTENT:");
-                    Log($"{response.Content}");
-
-                    _progressBar.IsIndeterminate = false;
-                }
+            ExecuteOnUiThread(() =>
+            {
+                _progressBar.IsIndeterminate = false;
             });
         }
 
@@ -84,7 +106,7 @@ namespace UwpApp
 
         class SmartThingsEndPoint
         {
-            public Uri Uri;
+            public string Uri;
             public string AuthToken;
         }
 
@@ -99,8 +121,11 @@ namespace UwpApp
 
                 var strings = await Windows.Storage.FileIO.ReadLinesAsync(file);
 
-                ep.Uri = new Uri(strings[0]);
+                ep.Uri = strings[0];
                 ep.AuthToken = strings[1];
+
+                if (!ep.Uri.EndsWith("/"))
+                    ep.Uri += "/";
 
                 return ep;
             } 
@@ -110,6 +135,45 @@ namespace UwpApp
                 Log("Path: " + Windows.Storage.ApplicationData.Current.LocalFolder.Path);
                 return null;
             }
+        }
+
+        HttpRequestMessage ConstructMessage(SmartThingsEndPoint endPoint, string command = null, HttpMethod method = null)
+        {
+            Uri uri = new Uri(endPoint.Uri + command ?? "");
+
+            var message = new HttpRequestMessage()
+            {
+                RequestUri = uri,
+                Method = method ?? HttpMethod.Get
+            };
+
+            message.Headers.Authorization = new Windows.Web.Http.Headers.HttpCredentialsHeaderValue("Bearer", endPoint.AuthToken);
+
+            return message;
+        }
+
+        async Task<HttpResponseMessage> GetAllSwitches(SmartThingsEndPoint endPoint)
+        {
+            var message = ConstructMessage(endPoint);
+
+            Log("Contacting " + message.RequestUri + "...");
+
+            IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.SendRequestAsync(message);
+            //httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
+            httpOperation.Progress = new AsyncOperationProgressHandler<HttpResponseMessage, HttpProgress>(HttpRequestProgress);
+            return await httpOperation;
+        }
+
+        async Task<HttpResponseMessage> TurnOnAllSwitches(SmartThingsEndPoint endPoint)
+        {
+            var message = ConstructMessage(endPoint, "on", HttpMethod.Put);
+
+            Log("Contacting " + message.RequestUri + "...");
+
+            IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.SendRequestAsync(message);
+            //httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
+            httpOperation.Progress = new AsyncOperationProgressHandler<HttpResponseMessage, HttpProgress>(HttpRequestProgress);
+            return await httpOperation;
         }
 
         private async void Page_Loaded(object sender, RoutedEventArgs e)
@@ -122,20 +186,28 @@ namespace UwpApp
             {
                 SmartThingsEndPoint endPoint = await ReadEndPointFromFileAsync();
 
-                Log("Contacting " + endPoint.Uri.AbsoluteUri + "...");
-
-                var message = new HttpRequestMessage()
+#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+                var task = new Task(async () => 
                 {
-                    RequestUri = endPoint.Uri,
-                    Method = HttpMethod.Get
-                };
+                    var getResult = await GetAllSwitches(endPoint);
+                    LogHttpResponse(getResult);
+                    var setResult = await TurnOnAllSwitches(endPoint);
+                    LogHttpResponse(setResult);
 
-                message.Headers.Authorization = new Windows.Web.Http.Headers.HttpCredentialsHeaderValue("Bearer", endPoint.AuthToken);
+                    // A set and get back-to-back seems to return stale data, so wait a bit :/
+                    await Task.Delay(500);
 
-                IAsyncOperationWithProgress<HttpResponseMessage, HttpProgress> httpOperation = _http.SendRequestAsync(message);
-                httpOperation.Completed = new AsyncOperationWithProgressCompletedHandler<HttpResponseMessage, HttpProgress>(HttpRequestCompleted);
-                httpOperation.Progress = new AsyncOperationProgressHandler<HttpResponseMessage, HttpProgress>(HttpRequestProgress);
-                httpOperation.AsTask().Start();
+                    var getResult2 = await GetAllSwitches(endPoint);
+                    LogHttpResponse(getResult2);
+
+                    ExecuteOnUiThread(() =>
+                    {
+                        _progressBar.IsIndeterminate = false;
+                    });
+                });
+#pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+
+                task.Start();
             }
             catch (TaskCanceledException)
             {
