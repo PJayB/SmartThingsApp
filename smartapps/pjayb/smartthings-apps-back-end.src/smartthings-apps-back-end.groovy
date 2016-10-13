@@ -14,7 +14,7 @@
  *
  */
 definition(
-    name: "SmartThingsAppBackEnd",
+    name: "Smart Things App Back-End",
     namespace: "PJayB",
     author: "Pete Lewis",
     description: "SmartThings Apps Back-End",
